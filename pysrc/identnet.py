@@ -1,9 +1,15 @@
 import numpy as np  #NOQA
 import tensorflow as tf
+from sklearn.model_selection import train_test_split
+import load
+import os
+import warnings
 
 
 def cnn_2d_2f(features, labels, mode):
-    input_layer = tf.reshape(features["array"], [-1, 256, 256, 1])
+    input_layer = tf.cast(
+        tf.reshape(features["x"], [-1, 256, 256, 1]),
+        tf.float16)
 
     # Convolutional Layer #1
     conv1 = tf.layers.conv2d(
@@ -86,12 +92,43 @@ def cnn_2d_2f(features, labels, mode):
         eval_metric_ops=eval_metric_ops)
 
 
-def main():
+def get_data(dir, max=-1):
+    features = []
+    labels = []
+    curr = 0
+
+    for item in os.listdir(dir):
+        *_, ext = item.rsplit(".")
+
+        if ext.lower() == "png":
+            labels.append(1)
+        elif ext.lower() == "jpg":
+            labels.append(0)
+        else:
+            warnings.warn("%s is not a valid extension at this time" % ext)
+            continue
+
+        feat = load.load_file(os.path.join(dir, item))
+        features.append(feat)
+        print("%s loaded!" % item)
+
+        curr += 1
+        if curr == max:
+            break
+
+    return np.array(features), np.array(labels)
+
+
+def main(dir):
+    data, labels = get_data(dir, max=100)
+
+    print(labels, (labels.sum() / len(labels)))
+
     # Load training and eval data
-    train_data = None  # np.array
-    train_labels = None  # np.array
-    eval_data = None  # np.array
-    eval_labels = None  # np.array
+    train_data, eval_data, train_labels, eval_labels = train_test_split(
+        data,
+        labels,
+        test_size=0.20)
 
     # Create the Estimator
     mnist_classifier = tf.estimator.Estimator(
@@ -113,7 +150,7 @@ def main():
         shuffle=True)
     mnist_classifier.train(
         input_fn=train_input_fn,
-        steps=20000,
+        steps=20,  # 20000,
         hooks=[logging_hook])
 
     # Evaluate the model and print results
@@ -128,4 +165,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main("../data/")
