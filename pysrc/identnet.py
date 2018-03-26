@@ -6,6 +6,9 @@ import os
 import warnings
 
 
+tf.logging.set_verbosity(tf.logging.DEBUG)
+
+
 def cnn_2d_2f(features, labels, mode):
     input_layer = tf.cast(
         tf.reshape(features["x"], [-1, 256, 256, 1]),
@@ -19,8 +22,12 @@ def cnn_2d_2f(features, labels, mode):
         padding="same",
         activation=tf.nn.relu)
 
+    # size = [256, 256, 16]
+
     # Pooling Layer #1
-    pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2)
+    pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=4, strides=4)
+
+    # size = [64, 64, 16]
 
     # Convolutional Layer #2 and Pooling Layer #2
     conv2 = tf.layers.conv2d(
@@ -29,19 +36,23 @@ def cnn_2d_2f(features, labels, mode):
         kernel_size=[5, 5],
         padding="same",
         activation=tf.nn.relu)
-    pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2)
+    pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=4, strides=4)
+
+    # size = [16, 16, 32]
 
     # Convolutional Layer #3 and Pooling Layer #3
     conv3 = tf.layers.conv2d(
         inputs=pool2,
-        filters=32,
+        filters=64,
         kernel_size=[5, 5],
         padding="same",
         activation=tf.nn.relu)
-    pool3 = tf.layers.max_pooling2d(inputs=conv3, pool_size=[2, 2], strides=2)
+    pool3 = tf.layers.max_pooling2d(inputs=conv3, pool_size=2, strides=2)
+
+    # size = [8, 8, 64]
 
     # Dense Layer
-    pool3_flat = tf.reshape(pool3, [-1, 32 * 32 * 32])
+    pool3_flat = tf.reshape(pool3, [-1, 8 * 8 * 64])
     dense = tf.layers.dense(
         inputs=pool3_flat,
         units=1024,
@@ -59,7 +70,8 @@ def cnn_2d_2f(features, labels, mode):
         "classes": tf.argmax(input=logits, axis=1),
         # Add `softmax_tensor` to the graph. It is used for PREDICT and by the
         # `logging_hook`.
-        "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
+        "probabilities": tf.nn.softmax(logits, name="softmax_tensor"),
+        "loss": None,
     }
 
     if mode == tf.estimator.ModeKeys.PREDICT:
@@ -67,6 +79,8 @@ def cnn_2d_2f(features, labels, mode):
 
     # Calculate Loss (for both TRAIN and EVAL modes)
     loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+
+    predictions["loss"] = loss
 
     # Configure the Training Op (for TRAIN mode)
     if mode == tf.estimator.ModeKeys.TRAIN:
@@ -120,7 +134,7 @@ def get_data(dir, max=-1):
 
 
 def main(dir):
-    data, labels = get_data(dir, max=100)
+    data, labels = get_data(dir, max=2000)
 
     print(labels, (labels.sum() / len(labels)))
 
@@ -133,13 +147,13 @@ def main(dir):
     # Create the Estimator
     mnist_classifier = tf.estimator.Estimator(
         model_fn=cnn_2d_2f,
-        model_dir="/tmp/mnist_convnet_model")
+        model_dir="/tmp/png_vs_jpg_model1")
 
     # Set up logging for predictions
     tensors_to_log = {"probabilities": "softmax_tensor"}
     logging_hook = tf.train.LoggingTensorHook(
         tensors=tensors_to_log,
-        every_n_iter=50)
+        every_n_iter=1)
 
     # Train the model
     train_input_fn = tf.estimator.inputs.numpy_input_fn(
@@ -150,7 +164,7 @@ def main(dir):
         shuffle=True)
     mnist_classifier.train(
         input_fn=train_input_fn,
-        steps=20,  # 20000,
+        steps=20000,
         hooks=[logging_hook])
 
     # Evaluate the model and print results
